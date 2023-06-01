@@ -22,16 +22,30 @@ jobs:
       - name: Lint
         run: docker-compose run --rm app sh -c "flake8"
 
-  build:
-    name: Run the app
-    runs-on: self-hosted
+  pull-on-server:
+    name: Pull on Server
+    runs-on: ubuntu-20.04
     steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Run
-        run: docker-compose build && docker-compose up
+      - name: Install SSH Key
+        run: |
+          install -m 600 -D /dev/null ~/.ssh/id_rsa
+          echo "${{ secrets.SERVER1_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER1_SSH_HOST }} > ~/.ssh/known_hosts
+      - name: Connect and Pull
+        run: ssh ${{ secrets.SERVER1_SSH_USER }}@${{ secrets.SERVER1_SSH_HOST }} "cd ${{ secrets.SERVER1_WORK_DIR }} && git checkout main && git pull && exit"
+      - name: Cleanup
+        run: rm -rf ~/.ssh
+
+  # build:
+  #   name: Run the app
+  #   runs-on: self-hosted
+  #   steps:
+  #     - name: Login to Docker Hub
+  #       uses: docker/login-action@v1
+  #       with:
+  #         username: ${{ secrets.DOCKERHUB_USER }}
+  #         password: ${{ secrets.DOCKERHUB_TOKEN }}
+  #     - name: Checkout
+  #       uses: actions/checkout@v2
+  #     - name: Run
+  #       run: docker-compose build && docker-compose up

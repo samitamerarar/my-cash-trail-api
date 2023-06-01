@@ -3,7 +3,8 @@ Serializers for Transaction APIs
 """
 from rest_framework import serializers
 
-from core.models import Transaction, TransactionMerchant, TransactionUserCategory, PaymentCard, MerchantCategoryCode, CreditCardMerchantCategory
+from core.models import Transaction, TransactionMerchant, TransactionUserCategory, \
+    PaymentCard, MerchantCategoryCode, CreditCardMerchantCategory
 
 
 class MerchantCategoryCode(serializers.ModelSerializer):

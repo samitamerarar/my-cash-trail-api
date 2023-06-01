@@ -1,17 +1,13 @@
 """
 Database models.
 """
-import uuid
-import os
-
 from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import (AbstractBaseUser, BaseUserManager, PermissionsMixin)
 
 from djmoney.models.fields import MoneyField
 from django.utils.translation import gettext_lazy as _
-from django.core.validators import (RegexValidator, MinLengthValidator,
-                                    MaxLengthValidator, MinValueValidator, MaxValueValidator)
+from django.core.validators import (RegexValidator, MinValueValidator, MaxValueValidator)
 
 from decimal import Decimal
 
@@ -150,7 +146,8 @@ class CreditCardMerchantCategory(TimeStampedModel):
         verbose_name_plural = "credit card categories"
 
     def __str__(self):
-        return f'{self.credit_card.name} + {self.merchant.name} ({self.mcc.irs_description}) = [{self.cash_back}%, {self.points_multiplier}x]'
+        return f'{self.credit_card.name} + {self.merchant.name} ({self.mcc.irs_description}) \
+            = [{self.cash_back}%, {self.points_multiplier}x]'
 
 
 class Transaction(TimeStampedModel):
