@@ -1,0 +1,15 @@
+{
+    "[python]": {
+        //"editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.defaultFormatter": "ms-python.autopep8", 
+        "editor.formatOnSave": true,
+    },
+    //"black-formatter.args": ["-S"],
+    "launch": {
+        "configurations": [],
+        "compounds": []
+    },
+    "json.schemas": [],
+    "python.formatting.provider": "none",
+    "python.formatting.autopep8Args": ["--max-line-length", "119", "--experimental"]  
+}
