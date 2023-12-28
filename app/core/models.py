@@ -3,6 +3,7 @@ Database models.
 """
 from django.conf import settings
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.contrib.auth.models import (AbstractBaseUser, BaseUserManager, PermissionsMixin)
 
 from djmoney.models.fields import MoneyField
@@ -10,6 +11,8 @@ from django.utils.translation import gettext_lazy as _
 from django.core.validators import (RegexValidator, MinValueValidator, MaxValueValidator)
 
 from decimal import Decimal
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut
 
 
 class TimeStampedModel(models.Model):
@@ -114,12 +117,40 @@ class TransactionMerchant(TimeStampedModel):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
-    location = models.CharField(max_length=255, blank=True)
+    location = models.CharField(max_length=255, null=True, blank=True)
+    latitude = models.FloatField(blank=True, null=True)
+    longitude = models.FloatField(blank=True, null=True)
     default_user_category = models.ForeignKey(TransactionUserCategory, on_delete=models.SET_NULL, null=True)
 
     class Meta:
         verbose_name = "merchant"
         verbose_name_plural = "merchants"
+
+    def _get_coordinates(self, address, attempt=1, max_attempts=5):
+        geolocator = Nominatim(user_agent="random_user_agent_aec4ea386b27c56")
+        try:
+            geocode = geolocator.geocode(self.location)
+            if geocode:
+                print(geocode.raw)
+                lat = geocode.latitude if geocode.latitude else None
+                lon = geocode.longitude if geocode.longitude else None
+                location = geocode.address.split(',')[0] if geocode.address else self.location
+                return lat, lon, location
+        except GeocoderTimedOut:
+            if attempt <= max_attempts:
+                return self._get_coordinates(address, attempt=attempt+1)  # Retry if geocoding times out
+        return None, None, None  # Return None if geocoding fails
+
+    def save(self, *args, **kwargs):
+        if self.pk:  # Record exists, it is an update
+            previous_record = TransactionMerchant.objects.filter(pk=self.pk).first()
+        else:  # Record doesn't exist, it is an insertion
+            pass
+        if not self.location:
+            self.latitude, self.longitude = None, None
+        elif ((previous_record and previous_record.location != self.location) or (not self.latitude or not self.longitude)) and self.location:
+            self.latitude, self.longitude, self.location = self._get_coordinates(self.location)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.name} ({str(self.location)})'
@@ -145,8 +176,18 @@ class CreditCardMerchantCategory(TimeStampedModel):
         verbose_name = "credit card category"
         verbose_name_plural = "credit card categories"
 
+    def clean(self):
+        # Only insert or update records that their combination of credit_card and merchant is unique.
+        if CreditCardMerchantCategory.objects.exclude(pk=self.pk).filter(
+                credit_card=self.credit_card, merchant=self.merchant).exists():
+            raise ValidationError("Combination of credit card and merchant already exists.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f'{self.credit_card.name} + {self.merchant.name} ({self.mcc.irs_description}) \
+        return f'{self.credit_card.name} + {self.merchant.name} ({self.mcc.irs_description if self.mcc else "No MCC Description"}) \
             = [{self.cash_back}%, {self.points_multiplier}x]'
 
 
@@ -158,7 +199,9 @@ class Transaction(TimeStampedModel):
         EXPENSE = 'Expense', _('Expense')
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
+    credit_card_category = models.ForeignKey(
+        CreditCardMerchantCategory, on_delete=models.SET_NULL, null=True, blank=True)
     payment_card = models.ForeignKey(PaymentCard, on_delete=models.SET_NULL,
                                      null=True, blank=True)  # null if parent exists
     user_category = models.ForeignKey(TransactionUserCategory, on_delete=models.SET_NULL,
@@ -168,6 +211,20 @@ class Transaction(TimeStampedModel):
     amount = MoneyField(max_digits=10, decimal_places=2, default=0, default_currency='CAD')
     authorized_date = models.DateField()
     details = models.TextField(blank=True)
+    has_children = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        # Update credit_card_category base on the combination of the two fields: payment_card and merchant
+        if self.credit_card_category and not self.payment_card:
+            self.payment_card = self.credit_card_category.credit_card
+        elif self.payment_card and self.merchant and CreditCardMerchantCategory.objects.filter(
+                credit_card=self.payment_card, merchant=self.merchant).exists():
+            self.credit_card_category = CreditCardMerchantCategory.objects.get(
+                credit_card=self.payment_card, merchant=self.merchant)
+        else:
+            self.credit_card_category = None
+
+        super(Transaction, self).save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.merchant.name} ({str(Decimal(self.amount.amount))})'

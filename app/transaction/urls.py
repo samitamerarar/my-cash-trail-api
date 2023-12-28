@@ -9,6 +9,7 @@ from transaction import views
 # /transactions
 router = DefaultRouter()
 router.register('transactions', views.TransactionViewSet)
+router.register('cc-merchant-categories', views.CreditCardMerchantCategoryViewSet)
 
 app_name = 'transaction'
 

@@ -51,3 +51,9 @@ remove your existing migration scripts for the app
 create a new initial migration for the app
 fake a migration to the initial migration for the app
 ```
+
+## Populate database with MerchantCategoryCode CSV file
+
+```
+docker-compose run --rm app sh -c "python manage.py populate_mcc core"
+```
